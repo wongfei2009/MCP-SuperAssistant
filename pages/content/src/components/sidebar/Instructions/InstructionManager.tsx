@@ -207,7 +207,7 @@ const InstructionManager: React.FC<InstructionManagerProps> = ({ adapter, tools 
   }, [tools]);
 
   return (
-    <div className="rounded-lg bg-white dark:bg-slate-900 shadow-sm border border-slate-200 dark:border-slate-800 sidebar-card">
+    <div className="rounded-lg bg-white dark:bg-slate-900 shadow-sm border border-slate-200 dark:border-slate-800 sidebar-card h-full flex flex-col overflow-hidden">
       <div className="p-3 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
         <Typography variant="h4" className="text-slate-700 dark:text-slate-300">
           Instructions
@@ -248,16 +248,17 @@ const InstructionManager: React.FC<InstructionManagerProps> = ({ adapter, tools 
         </div>
       </div>
 
-      <div className="p-3 bg-white dark:bg-slate-900">
+      <div className="p-3 bg-white dark:bg-slate-900 flex-grow flex flex-col">
         {isEditing ? (
           <textarea
             value={instructions}
             onChange={e => setInstructions(e.target.value)}
-            className="w-full h-64 p-2 text-sm font-mono border border-slate-300 dark:border-slate-600 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-blue-500 dark:focus:border-blue-400 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-200"
+            className="w-full flex-grow p-2 text-sm font-mono border border-slate-300 dark:border-slate-600 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-blue-500 dark:focus:border-blue-400 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-200"
+            style={{ height: "calc(100vh - 200px)" }}
           />
         ) : (
-          <div className="max-h-64 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600 scrollbar-track-transparent">
-            <pre className="text-xs bg-slate-50 dark:bg-slate-800 p-3 rounded overflow-x-auto text-slate-700 dark:text-slate-300 whitespace-pre-wrap">
+          <div className="flex-grow" style={{ height: "calc(100vh - 200px)" }}>
+            <pre className="text-xs bg-slate-50 dark:bg-slate-800 p-3 rounded overflow-x-auto text-slate-700 dark:text-slate-300 whitespace-pre-wrap h-full">
               {instructions}
             </pre>
           </div>
