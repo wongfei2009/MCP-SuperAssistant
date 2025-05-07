@@ -754,6 +754,13 @@ export const MCPPopover: React.FC<MCPPopoverProps> = ({ toggleStateManager, cust
             }}>
             <ToggleItem id="mcp-toggle" label="MCP" checked={state.mcpEnabled} disabled={false} onChange={handleMCP} />
             <ToggleItem
+              id="auto-execute-toggle"
+              label="Auto Execute"
+              checked={state.autoExecute}
+              disabled={autoExecuteDisabled}
+              onChange={handleAutoExecute}
+            />
+            <ToggleItem
               id="auto-insert-toggle"
               label="Auto Insert"
               checked={state.autoInsert}
@@ -766,13 +773,6 @@ export const MCPPopover: React.FC<MCPPopoverProps> = ({ toggleStateManager, cust
               checked={state.autoSubmit}
               disabled={autoSubmitDisabled}
               onChange={handleAutoSubmit}
-            />
-            <ToggleItem
-              id="auto-execute-toggle"
-              label="Auto Execute"
-              checked={state.autoExecute}
-              disabled={autoExecuteDisabled}
-              onChange={handleAutoExecute}
             />
           </div>
           {/* Instruction panel column */}
