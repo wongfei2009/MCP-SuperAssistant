@@ -26,7 +26,7 @@ export abstract class BaseSidebarManager {
   protected siteType: SiteType;
   protected shadowHost: HTMLDivElement | null = null;
   protected shadowRoot: ShadowRoot | null = null;
-  protected _isPushContentMode: boolean = false;
+  // _isPushContentMode removed since it's always true
   private _initializationPromise: Promise<void> | null = null;
   private _isInitialized = false;
 
@@ -82,56 +82,43 @@ export abstract class BaseSidebarManager {
 
   /**
    * Set push content mode
-   * This is the single source of truth for push mode functionality
-   * @param enabled Whether push mode should be enabled
-   * @param sidebarWidth Optional width of the sidebar (for collapsed state handling)
-   * @param isCollapsed Optional flag indicating if the sidebar is collapsed
+   * Push Content Mode is always enabled - this now just handles the width and collapsed state
+   * @param _enabled Parameter kept for API compatibility but ignored
+   * @param sidebarWidth Width of the sidebar
+   * @param isCollapsed Whether the sidebar is collapsed
    */
-  public setPushContentMode(enabled: boolean, sidebarWidth?: number, isCollapsed?: boolean): void {
-    this._isPushContentMode = enabled;
+  public setPushContentMode(_enabled: boolean, sidebarWidth?: number, isCollapsed?: boolean): void {
+    // Set sidebar width CSS variable
+    const width = isCollapsed ? 56 : sidebarWidth || 320;
+    document.documentElement.style.setProperty('--sidebar-width-mcp', `${width}px`);
 
-    if (enabled) {
-      // Set sidebar width CSS variable
-      const width = isCollapsed ? 56 : sidebarWidth || 320;
-      document.documentElement.style.setProperty('--sidebar-width-mcp', `${width}px`);
+    // Apply specific inline styles directly to the HTML element
+    document.documentElement.style.setProperty('position', 'relative');
+    document.documentElement.style.setProperty('margin-right', `${width}px`);
+    document.documentElement.style.setProperty('width', `calc(100% - ${width}px)`);
+    document.documentElement.style.setProperty('min-height', '100vh');
 
-      // Apply specific inline styles directly to the HTML element
-      document.documentElement.style.setProperty('position', 'relative');
-      document.documentElement.style.setProperty('margin-right', `${width}px`);
-      document.documentElement.style.setProperty('width', `calc(100% - ${width}px)`);
-      document.documentElement.style.setProperty('min-height', '100vh');
+    // Add classes to HTML root for CSS-based layout adjustments
+    document.documentElement.classList.add('push-mode-enabled');
 
-      // Add classes to HTML root for CSS-based layout adjustments
-      document.documentElement.classList.add('push-mode-enabled');
-
-      // Add collapsed state class if needed
-      if (isCollapsed) {
-        document.documentElement.classList.add('sidebar-collapsed');
-      } else {
-        document.documentElement.classList.remove('sidebar-collapsed');
-      }
-
-      // When push mode is enabled, ensure the sidebar is visible
-      if (!this._isVisible || (this.shadowHost && this.shadowHost.style.display !== 'block')) {
-        logMessage('[BaseSidebarManager] Push mode enabled but sidebar not visible, showing sidebar');
-        // Use a non-async version of show to ensure immediate visibility
-        this.forceVisibility();
-      }
+    // Add collapsed state class if needed
+    if (isCollapsed) {
+      document.documentElement.classList.add('sidebar-collapsed');
     } else {
-      // Remove all inline styles when push mode is disabled
-      document.documentElement.style.removeProperty('position');
-      document.documentElement.style.removeProperty('margin-right');
-      document.documentElement.style.removeProperty('width');
-      document.documentElement.style.removeProperty('min-height');
+      document.documentElement.classList.remove('sidebar-collapsed');
+    }
 
-      // Remove push mode classes when disabled
-      document.documentElement.classList.remove('push-mode-enabled', 'sidebar-collapsed');
+    // When push mode is enabled, ensure the sidebar is visible
+    if (!this._isVisible || (this.shadowHost && this.shadowHost.style.display !== 'block')) {
+      logMessage('[BaseSidebarManager] Push mode enabled but sidebar not visible, showing sidebar');
+      // Use a non-async version of show to ensure immediate visibility
+      this.forceVisibility();
     }
 
     // Ensure push mode styles are in the document
     this.ensurePushModeStyles();
 
-    logMessage(`BaseSidebarManager: Push mode ${enabled ? 'enabled' : 'disabled'}`);
+    logMessage(`BaseSidebarManager: Push Content Mode applied with width: ${width}px`);
   }
 
   /**
@@ -236,9 +223,10 @@ export abstract class BaseSidebarManager {
 
   /**
    * Get current push content mode state
+   * Always returns true since Push Content Mode is always enabled
    */
   public getPushContentMode(): boolean {
-    return this._isPushContentMode;
+    return true;
   }
 
   /**
@@ -432,8 +420,9 @@ export abstract class BaseSidebarManager {
     const previouslyVisible = this._isVisible;
     this._isVisible = false;
 
-    // Ensure push mode is explicitly turned off when hiding
-    this.setPushContentMode(false);
+    // Keep Push Content Mode enabled even when sidebar is hidden
+    // Don't turn off push mode when hiding the sidebar
+    // this.setPushContentMode(false);
 
     if (previouslyVisible) {
       logMessage('[BaseSidebarManager] Sidebar hidden (was previously visible).');

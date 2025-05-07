@@ -47,7 +47,7 @@ const Sidebar: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'availableTools' | 'instructions'>('availableTools');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT_WIDTH);
-  const [isPushMode, setIsPushMode] = useState(false);
+  // isPushMode state removed since it's always enabled
   const [autoSubmit, setAutoSubmit] = useState(false);
   const [theme, setTheme] = useState<Theme>('system');
   const [isTransitioning, setIsTransitioning] = useState(false); // Single state for all transitions
@@ -107,7 +107,7 @@ const Sidebar: React.FC = () => {
         logMessage(`[Sidebar] Loaded preferences: ${JSON.stringify(preferences)}`);
 
         // Apply stored settings
-        setIsPushMode(preferences.isPushMode);
+        // isPushMode is always enabled, so we don't need to set it from preferences
         setSidebarWidth(preferences.sidebarWidth || SIDEBAR_DEFAULT_WIDTH);
         setIsMinimized(preferences.isMinimized ?? false);
         setAutoSubmit(preferences.autoSubmit || false);
@@ -148,7 +148,7 @@ const Sidebar: React.FC = () => {
     // Use debounce for width changes to avoid excessive writes
     const saveTimeout = setTimeout(() => {
       saveSidebarPreferences({
-        isPushMode,
+        // isPushMode removed since it's always enabled
         sidebarWidth,
         isMinimized,
         autoSubmit,
@@ -159,7 +159,7 @@ const Sidebar: React.FC = () => {
     }, 300);
 
     return () => clearTimeout(saveTimeout);
-  }, [isPushMode, sidebarWidth, isMinimized, autoSubmit, theme]);
+  }, [sidebarWidth, isMinimized, autoSubmit, theme]);
 
   // useEffect(() => {
   //   // Function to update detected tools
@@ -214,27 +214,27 @@ const Sidebar: React.FC = () => {
       // Only apply push mode settings if the sidebar is currently visible
       if (sidebarManager.getIsVisible()) {
         logMessage(
-          `[Sidebar] Applying push mode (${isPushMode}, minimized: ${isMinimized}) and width (${sidebarWidth}) to BaseSidebarManager`,
+          `[Sidebar] Applying push mode (minimized: ${isMinimized}) and width (${sidebarWidth}) to BaseSidebarManager`,
         );
         // Pass minimized width if minimized, otherwise sidebarWidth
         sidebarManager.setPushContentMode(
-          isPushMode,
+          true, // Always true since Push Content Mode is always enabled
           isMinimized ? SIDEBAR_MINIMIZED_WIDTH : sidebarWidth,
           isMinimized,
         );
 
-        // If only width changed while push mode is active, update styles
+        // If only width changed, update styles
         // Added checks to prevent unnecessary updates during resize or initial load
-        if (isPushMode && !isInitialLoadRef.current && !isResizingRef.current) {
+        if (!isInitialLoadRef.current && !isResizingRef.current) {
           sidebarManager.updatePushModeStyles(isMinimized ? SIDEBAR_MINIMIZED_WIDTH : sidebarWidth);
         }
       } else {
-        logMessage('[Sidebar] Sidebar is hidden, skipping application of push mode/width preferences.');
-        // Ensure push mode is explicitly turned off if the sidebar should be hidden
-        sidebarManager.setPushContentMode(false);
+        logMessage('[Sidebar] Sidebar is hidden, skipping application of width preferences.');
+        // Keep Push Content Mode enabled even when sidebar is hidden
+        sidebarManager.setPushContentMode(true);
       }
     } else {
-      logMessage('[Sidebar] Sidebar manager not found when trying to apply push mode/width.');
+      logMessage('[Sidebar] Sidebar manager not found when trying to apply width.');
     }
 
     // Mark initial load as complete after the first run
@@ -243,7 +243,7 @@ const Sidebar: React.FC = () => {
     }
     // Reset resize ref after applying changes
     isResizingRef.current = false;
-  }, [isPushMode, sidebarWidth, isMinimized, adapter]); // Re-run when these change
+  }, [sidebarWidth, isMinimized, adapter]); // isPushMode removed from dependencies
 
   // Simple transition management
   const startTransition = () => {
@@ -282,18 +282,16 @@ const Sidebar: React.FC = () => {
       // Enforce minimum width constraint
       const constrainedWidth = Math.max(SIDEBAR_DEFAULT_WIDTH, width);
 
-      // Update push mode styles if enabled
-      if (isPushMode) {
-        try {
-          const sidebarManager = (window as any).activeSidebarManager;
-          if (sidebarManager && typeof sidebarManager.updatePushModeStyles === 'function') {
-            sidebarManager.updatePushModeStyles(constrainedWidth);
-          }
-        } catch (error) {
-          logMessage(
-            `[Sidebar] Error updating push mode styles: ${error instanceof Error ? error.message : String(error)}`,
-          );
+      // Always update push mode styles since it's always enabled
+      try {
+        const sidebarManager = (window as any).activeSidebarManager;
+        if (sidebarManager && typeof sidebarManager.updatePushModeStyles === 'function') {
+          sidebarManager.updatePushModeStyles(constrainedWidth);
         }
+      } catch (error) {
+        logMessage(
+          `[Sidebar] Error updating push mode styles: ${error instanceof Error ? error.message : String(error)}`,
+        );
       }
 
       // Debounce the state update for better performance
@@ -321,13 +319,10 @@ const Sidebar: React.FC = () => {
         setSidebarWidth(constrainedWidth);
       }
     },
-    [isPushMode],
+    [], // No dependencies since isPushMode was removed
   );
 
-  const handlePushModeToggle = (checked: boolean) => {
-    setIsPushMode(checked);
-    logMessage(`[Sidebar] Push mode ${checked ? 'enabled' : 'disabled'}`);
-  };
+  // handlePushModeToggle removed since Push Content Mode is always enabled
 
   const handleAutoSubmitToggle = (checked: boolean) => {
     setAutoSubmit(checked);
@@ -405,8 +400,7 @@ const Sidebar: React.FC = () => {
     <div
       ref={sidebarRef}
       className={cn(
-        'fixed top-0 right-0 h-screen bg-white dark:bg-slate-900 shadow-lg z-50 flex flex-col border-l border-slate-200 dark:border-slate-700 sidebar',
-        isPushMode ? 'push-mode' : '',
+        'fixed top-0 right-0 h-screen bg-white dark:bg-slate-900 shadow-lg z-50 flex flex-col border-l border-slate-200 dark:border-slate-700 sidebar push-mode',
         isResizingRef.current ? 'resizing' : '',
         isMinimized ? 'collapsed' : '',
         isTransitioning ? 'sidebar-transitioning' : '',
@@ -527,36 +521,15 @@ const Sidebar: React.FC = () => {
             <div className="py-4 px-4 space-y-4 overflow-y-auto flex-shrink-0">
               <ServerStatus status={serverStatus} />
 
-              {/* Settings */}
-              <Card className="sidebar-card border-slate-200 dark:border-slate-700 dark:bg-slate-800 flex-shrink-0 overflow-hidden rounded-lg shadow-sm transition-shadow duration-300">
-                <CardContent className="p-3 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <Typography variant="subtitle" className="text-slate-700 dark:text-slate-300 font-medium">
-                      Push Content Mode
-                    </Typography>
-                    <ToggleWithoutLabel
-                      label="Push Content Mode"
-                      checked={isPushMode}
-                      onChange={handlePushModeToggle}
-                    />
-                  </div>
-                  {/* <div className="flex items-center justify-between">
-                    <Typography variant="subtitle" className="text-slate-700 dark:text-slate-300 font-medium">
-                      Auto Submit Tool Results
-                    </Typography>
-                    <ToggleWithoutLabel
-                      label="Auto Submit Tool Results"
-                      checked={autoSubmit}
-                      onChange={handleAutoSubmitToggle}
-                    />
-                  </div> */}
-
-                  {/* DEBUG BUTTON - ONLY FOR DEVELOPMENT - REMOVE IN PRODUCTION */}
-                  {process.env.NODE_ENV === 'development' && (
+              {/* Settings Card removed - Push Content Mode is always enabled */}
+              {/* Debug button moved to development-only component */}
+              {process.env.NODE_ENV === 'development' && (
+                <Card className="sidebar-card border-slate-200 dark:border-slate-700 dark:bg-slate-800 flex-shrink-0 overflow-hidden rounded-lg shadow-sm transition-shadow duration-300">
+                  <CardContent className="p-3">
                     <Button
                       variant="outline"
                       size="sm"
-                      className="w-full mt-2 border-slate-200 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-700"
+                      className="w-full border-slate-200 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-700"
                       onClick={() => {
                         const shadowHost = (window as any).activeSidebarManager?.getShadowHost();
                         if (shadowHost && shadowHost.shadowRoot) {
@@ -568,9 +541,9 @@ const Sidebar: React.FC = () => {
                       }}>
                       Debug Styles
                     </Button>
-                  )}
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
+              )}
 
               {/* Tabs for Tools/Instructions */}
               <div className="border-b border-slate-200 dark:border-slate-700 mb-2">

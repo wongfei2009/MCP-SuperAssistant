@@ -122,13 +122,11 @@ export class SidebarManager extends BaseSidebarManager {
         })
         .then(preferences => {
           const wasMinimized = preferences.isMinimized ?? false;
-          const isPushMode = preferences.isPushMode ?? false;
+          // Push Content Mode is always enabled
           const sidebarWidth = preferences.sidebarWidth || 320;
 
-          // First apply push content mode with correct width but no visibility yet
-          if (isPushMode) {
-            this.setPushContentMode(true, wasMinimized ? 56 : sidebarWidth, wasMinimized);
-          }
+          // Always apply push content mode with correct width but no visibility yet
+          this.setPushContentMode(true, wasMinimized ? 56 : sidebarWidth, wasMinimized);
 
           // Start rendering process with proper error handling
           logMessage('[SidebarManager] Rendering with current preferences');
@@ -234,7 +232,7 @@ export class SidebarManager extends BaseSidebarManager {
     try {
       const preferences = await getSidebarPreferences();
       const wasMinimized = preferences.isMinimized ?? false;
-      const isPushMode = preferences.isPushMode ?? false;
+      // Push Content Mode is always enabled
       const sidebarWidth = preferences.sidebarWidth || 320;
 
       // Show sidebar initially in minimized state
@@ -243,10 +241,8 @@ export class SidebarManager extends BaseSidebarManager {
       }
       this._isVisible = true;
 
-      // Set push content mode with minimized width first
-      if (isPushMode) {
-        this.setPushContentMode(true, 56, true);
-      }
+      // Always set push content mode with minimized width first
+      this.setPushContentMode(true, 56, true);
 
       // Render the content
       this.render();
@@ -254,10 +250,9 @@ export class SidebarManager extends BaseSidebarManager {
       // If it was not minimized before, schedule the expansion after a short delay
       if (!wasMinimized) {
         setTimeout(() => {
-          // If push mode is enabled, update it with the full width
-          if (isPushMode) {
-            this.setPushContentMode(true, sidebarWidth, false);
-          }
+          // Always use push content mode with the full width
+          this.setPushContentMode(true, sidebarWidth, false);
+          
           // Force a re-render to reflect the expanded state
           this.render();
           logMessage('[SidebarManager] Sidebar expanded after initial collapsed state');
