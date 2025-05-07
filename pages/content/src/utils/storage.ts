@@ -2,7 +2,7 @@ import { logMessage } from './helpers';
 
 // Types
 export interface SidebarPreferences {
-  isPushMode: boolean;
+  // isPushMode removed since it's always enabled
   sidebarWidth: number;
   isMinimized: boolean;
   autoSubmit: boolean;
@@ -23,7 +23,7 @@ const TOOL_PERMISSIONS_KEY = 'mcp_tool_permissions';
 
 // Default preferences
 const DEFAULT_PREFERENCES: SidebarPreferences = {
-  isPushMode: false,
+  // isPushMode removed since it's always enabled
   sidebarWidth: 320,
   isMinimized: false,
   autoSubmit: false,
