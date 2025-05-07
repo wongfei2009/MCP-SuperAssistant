@@ -5,7 +5,6 @@ import ServerStatus from './ServerStatus/ServerStatus';
 import AvailableTools from './AvailableTools/AvailableTools';
 import DetectedTools from './DetectedTools/DetectedTools';
 import InstructionManager from './Instructions/InstructionManager';
-import InputArea from './InputArea/InputArea';
 import { useBackgroundCommunication } from './hooks/backgroundCommunication';
 import { logMessage, debugShadowDomStyles } from '@src/utils/helpers';
 import { Typography, Toggle, ToggleWithoutLabel, ResizeHandle, Icon, Button } from './ui';
@@ -52,7 +51,6 @@ const Sidebar: React.FC = () => {
   const [theme, setTheme] = useState<Theme>('system');
   const [isTransitioning, setIsTransitioning] = useState(false); // Single state for all transitions
   const [isInitialRender, setIsInitialRender] = useState(true);
-  const [isInputMinimized, setIsInputMinimized] = useState(false);
   // Add a state to track if component loading is complete, regardless of background services
   const [isComponentLoadingComplete, setIsComponentLoadingComplete] = useState(false);
 
@@ -265,8 +263,6 @@ const Sidebar: React.FC = () => {
     startTransition();
     setIsMinimized(!isMinimized);
   };
-
-  const toggleInputMinimize = () => setIsInputMinimized(prev => !prev);
 
   const handleResize = useCallback(
     (width: number) => {
@@ -573,15 +569,15 @@ const Sidebar: React.FC = () => {
             </div>
 
             {/* Tab Content Area - scrollable area with flex-grow to fill available space */}
-            <div className="flex-1 min-h-0 px-4 pb-4 overflow-hidden">
+            <div className="flex-1 min-h-0 px-4 pb-8 overflow-hidden flex flex-col" style={{ height: 'calc(100% - 60px)' }}>
               {/* AvailableTools */}
               <div
                 className={cn(
-                  'h-full overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600 scrollbar-track-transparent',
+                  'h-full flex flex-col flex-grow',
                   { hidden: activeTab !== 'availableTools' },
                 )}>
-                <Card className="border-slate-200 dark:border-slate-700 dark:bg-slate-800 rounded-lg shadow-sm overflow-hidden hover:shadow-md transition-shadow duration-300">
-                  <CardContent className="p-0">
+                <Card className="border-slate-200 dark:border-slate-700 dark:bg-slate-800 rounded-lg shadow-sm overflow-auto hover:shadow-md transition-shadow duration-300 mb-8 flex-grow max-h-full">
+                  <CardContent className="p-0 max-h-full overflow-auto scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600 scrollbar-track-transparent">
                     <AvailableTools
                       tools={availableTools}
                       onExecute={sendMessage}
@@ -595,40 +591,25 @@ const Sidebar: React.FC = () => {
               {/* Instructions */}
               <div
                 className={cn(
-                  'h-full overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600 scrollbar-track-transparent',
+                  'h-full flex flex-col flex-grow',
                   { hidden: activeTab !== 'instructions' },
                 )}>
-                <Card className="border-slate-200 dark:border-slate-700 dark:bg-slate-800 rounded-lg shadow-sm overflow-hidden hover:shadow-md transition-shadow duration-300">
-                  <CardContent className="p-0">
+                <Card className="border-slate-200 dark:border-slate-700 dark:bg-slate-800 rounded-lg shadow-sm overflow-auto hover:shadow-md transition-shadow duration-300 mb-8 flex-grow max-h-full">
+                  <CardContent className="p-0 h-full max-h-full overflow-auto scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600 scrollbar-track-transparent">
                     <InstructionManager adapter={adapter} tools={formattedTools} />
                   </CardContent>
                 </Card>
               </div>
             </div>
 
-            {/* Input Area (Always at the bottom) */}
-            <div className="border-t border-slate-200 dark:border-slate-700 flex-shrink-0 bg-white dark:bg-slate-800 shadow-inner">
-              {!isInputMinimized ? (
-                <div className="relative">
-                  <Button variant="ghost" size="sm" onClick={toggleInputMinimize} className="absolute top-2 right-2">
-                    <Icon name="chevron-down" size="sm" />
-                  </Button>
-                  <InputArea
-                    onSubmit={async text => {
-                      adapter.insertTextIntoInput(text);
-                      await new Promise(resolve => setTimeout(resolve, 300));
-                      await adapter.triggerSubmission();
-                    }}
-                    onToggleMinimize={toggleInputMinimize}
-                  />
-                </div>
-              ) : (
-                <Button variant="default" size="sm" onClick={toggleInputMinimize} className="w-full h-10">
-                  <Icon name="chevron-up" size="sm" className="mr-2" />
-                  Show Input
-                </Button>
-              )}
-            </div>
+            {/* Footer with information - only displayed when not minimized */}
+            {!isMinimized && (
+              <div className="border-t border-slate-200 dark:border-slate-700 flex-shrink-0 bg-white dark:bg-slate-800 p-3 text-center shadow-inner">
+                <Typography variant="small" className="text-slate-500 dark:text-slate-400">
+                  MCP SuperAssistant
+                </Typography>
+              </div>
+            )}
           </div>
         </div>
       </div>
