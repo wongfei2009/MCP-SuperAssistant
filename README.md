@@ -79,7 +79,7 @@ To connect the Chrome extension to a local server for proxying connections:
 #### Run MCP SuperAssistant Proxy via npx:
 
    ```bash
-   npx @srbhptl39/mcp-superassistant-proxy@latest --config ./mcptestconfig.json
+   npx @wongfei2009/mcp-superassistant-proxy@latest --config ./mcptestconfig.json
    ```
    
    This is useful for:
@@ -158,8 +158,3 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - Inspired by the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) by Anthropic
 - Thanks to [Cline](https://github.com/cline/cline) for idea inspiration
 - Built with [Chrome Extension Boilerplate with React + Vite](https://github.com/Jonghakseo/chrome-extension-boilerplate-react-vite)
-
-
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=srbhptl39/MCP-SuperAssistant&type=Date)](https://www.star-history.com/#srbhptl39/MCP-SuperAssistant&Date)
