@@ -68,7 +68,14 @@ const aiStudioAdapterConfig: AdapterConfig = {
   storageKeyPrefix: 'mcp-aistudio-state', // Uses localStorage
   findButtonInsertionPoint: findAIStudioButtonInsertionPoint,
   getStorage: () => localStorage, // AI Studio uses localStorage
-  // getCurrentURLKey: default implementation (pathname) likely fine
+  
+  // Override URL key generation to use a fixed key for all AI Studio chats
+  // This ensures toggle state is shared across all AI Studio chat sessions
+  getCurrentURLKey: () => {
+    // Return a fixed string instead of the path to make settings consistent across all chats
+    return 'global-settings';
+  },
+  
   onMCPEnabled: showAIStudioSidebar,
   onMCPDisabled: hideAIStudioSidebar,
 };
