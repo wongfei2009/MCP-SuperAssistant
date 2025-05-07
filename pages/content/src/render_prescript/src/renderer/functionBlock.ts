@@ -57,8 +57,193 @@ const configureMonacoEditorForCSP = () => {
 export const processedElements = new WeakSet<HTMLElement>();
 export const renderedFunctionBlocks = new Map<string, HTMLDivElement>();
 
+// Default auto-execution setting if not specified by user
+const DEFAULT_AUTO_EXECUTE = true;
+
 // Maximum number of retry attempts before giving up on auto-execution
-const MAX_AUTO_EXECUTE_ATTEMPTS = 3;
+const MAX_AUTO_EXECUTE_ATTEMPTS = 8;
+
+// Default delay between auto-execution attempts (ms)
+const AUTO_EXECUTE_RETRY_DELAY = 300;
+
+// Initial delay before first auto-execution attempt (ms)
+const INITIAL_AUTO_EXECUTE_DELAY = 150;
+
+// Setup a global mutation observer to watch for DOM changes
+// This helps with detecting when function blocks are added or modified
+let domObserver: MutationObserver | null = null;
+let observerEnabled = false;
+
+// Function to setup the DOM observer
+const setupDOMObserver = () => {
+  // If already set up and enabled, do nothing
+  if (domObserver && observerEnabled) return;
+
+  // Clean up existing observer if any
+  if (domObserver) {
+    domObserver.disconnect();
+    domObserver = null;
+  }
+  
+  // Create and configure the new observer
+  domObserver = new MutationObserver((mutations) => {
+    // Only process mutations if observer is enabled
+    if (!observerEnabled) return;
+    
+    let functionBlocksToProcess = [];
+    
+    // First pass: collect all function blocks to process
+    for (const mutation of mutations) {
+      if (mutation.type === 'childList') {
+        for (const node of Array.from(mutation.addedNodes)) {
+          if (node.nodeType === Node.ELEMENT_NODE) {
+            const element = node as HTMLElement;
+            
+            // Find unprocessed function blocks
+            const blocks = element.querySelectorAll 
+              ? element.querySelectorAll<HTMLPreElement>('pre:not([data-processed])')
+              : [];
+              
+            for (const block of Array.from(blocks)) {
+              // Mark as being processed to prevent duplicates
+              block.setAttribute('data-processed', 'true');
+              
+              // Only add blocks that contain function calls and aren't already processed
+              if (!processedElements.has(block) && 
+                  block.textContent?.includes('<function_calls>')) {
+                functionBlocksToProcess.push(block);
+              }
+            }
+          }
+        }
+      }
+    }
+    
+    // Second pass: process all blocks with a delay between each
+    if (functionBlocksToProcess.length > 0) {
+      console.debug(`DOM Observer: Found ${functionBlocksToProcess.length} function blocks to process`);
+      
+      // Temporarily disable observer during processing to prevent interference
+      const currentObserverStatus = observerEnabled;
+      observerEnabled = false;
+      
+      // Process blocks one at a time with delay between to avoid race conditions
+      functionBlocksToProcess.forEach((block, index) => {
+        setTimeout(() => {
+          try {
+            console.debug(`DOM Observer: Processing block ${index + 1}/${functionBlocksToProcess.length}`);
+            renderFunctionCall(block, { current: false });
+          } catch (error) {
+            console.error(`Error processing function block ${index + 1}:`, error);
+          }
+          
+          // Re-enable observer after last block is processed
+          if (index === functionBlocksToProcess.length - 1) {
+            setTimeout(() => {
+              observerEnabled = currentObserverStatus;
+              console.debug('DOM Observer: Re-enabled after processing');
+            }, 100);
+          }
+        }, index * 100); // Stagger processing by 100ms per block
+      });
+    }
+  });
+
+  // Start observing the entire document
+  domObserver.observe(document.body, {
+    childList: true,
+    subtree: true,
+  });
+  
+  // Mark observer as enabled
+  observerEnabled = true;
+  console.debug('DOM Observer: Setup complete and enabled');
+};
+
+// Enable/disable the observer
+export const enableDOMObserver = () => {
+  observerEnabled = true;
+  console.debug('DOM Observer: Enabled');
+};
+
+export const disableDOMObserver = () => {
+  observerEnabled = false;
+  console.debug('DOM Observer: Disabled');
+};
+
+/**
+ * Global scanner that actively looks for and executes eligible function buttons
+ * This is the primary mechanism that ensures reliable auto-execution
+ * But it respects the user's auto-execute toggle preference
+ */
+const autoExecuteButtonScanner = () => {
+  // Check if auto-execute is enabled by the user
+  const autoExecuteEnabled = (window as any).toggleState?.autoExecute === true;
+  
+  if (CONFIG.debug) console.debug(`Auto-execute scanner running (enabled: ${autoExecuteEnabled})`);
+  
+  // Find all execute buttons on the page
+  const allButtons = document.querySelectorAll<HTMLButtonElement>('.execute-button');
+  
+  if (allButtons.length === 0) {
+    // Schedule another check if no buttons found
+    setTimeout(autoExecuteButtonScanner, 1000);
+    return;
+  }
+  
+  // Only process buttons if auto-execute is enabled
+  if (autoExecuteEnabled) {
+    // Process each button
+    allButtons.forEach((button, index) => {
+      // Skip disabled buttons or ones already processed
+      if (button.disabled || button.getAttribute('data-auto-exec-ready') === 'false') {
+        return;
+      }
+      
+      // Get function name for logging
+      const block = button.closest('.function-block');
+      const nameEl = block?.querySelector('.function-name-text');
+      const functionName = nameEl?.textContent || 'unknown';
+      
+      // Delay increases with button index to avoid overwhelming the page
+      const delay = 300 * (index + 1);
+      
+      if (CONFIG.debug) console.debug(`Scheduling auto-execution for ${functionName} in ${delay}ms`);
+      
+      setTimeout(() => {
+        try {
+          // Check again if auto-execute is still enabled at execution time
+          const stillEnabled = (window as any).toggleState?.autoExecute === true;
+          
+          // Final check before clicking
+          if (stillEnabled && !button.disabled && button.getAttribute('data-auto-exec-ready') !== 'false') {
+            if (CONFIG.debug) console.debug(`Auto-executing function ${functionName}`);
+            button.click();
+          }
+        } catch (e) {
+          console.error(`Error auto-executing ${functionName}:`, e);
+        }
+      }, delay);
+    });
+  }
+  
+  // Continue scanning periodically to catch new buttons
+  setTimeout(autoExecuteButtonScanner, 3000);
+};
+
+// Setup the observer and auto-execution scanner when the module loads
+if (typeof window !== 'undefined') {
+  // Wait for DOM to be ready before setting up
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+      setTimeout(setupDOMObserver, 500); // Delayed setup for better stability
+      setTimeout(autoExecuteButtonScanner, 1000); // Start auto-execution scan after 1 second
+    });
+  } else {
+    setTimeout(setupDOMObserver, 500); // Delayed setup for better stability
+    setTimeout(autoExecuteButtonScanner, 1000); // Start auto-execution scan after 1 second
+  }
+}
 
 // Centralized execution tracking system to prevent race conditions and duplicate executions
 interface ExecutionTracker {
@@ -91,59 +276,81 @@ export const executionTracker: ExecutionTracker = {
   executedFunctions: new Set<string>(),
 
   isFunctionExecuted(callId: string, contentSignature: string, functionName?: string): boolean {
+    // Create a unique log ID for tracing this specific check
+    const checkId = Math.random().toString(36).substring(2, 8);
     console.debug(
-      `[Debug] isFunctionExecuted called with: callId='${callId}', signature='${contentSignature}', funcName='${functionName || 'undefined'}'`,
+      `[Debug][${checkId}] isFunctionExecuted called with: callId='${callId}', signature='${contentSignature}', funcName='${functionName || 'undefined'}'`,
     );
 
-    // Determine the function name to use (prefer provided, fallback to extracting from memory)
-    let effectiveFunctionName = functionName;
-    let foundNameInMemory = false;
-
-    // Try to extract from executedFunctions set keys IF functionName was NOT provided initially
-    if (typeof effectiveFunctionName === 'undefined' || effectiveFunctionName === null) {
-      let functionNameFromMemory = '';
+    // First check: Direct memory lookup with provided function name (most reliable)
+    if (typeof functionName === 'string') {
+      const key = `${functionName}:${callId}:${contentSignature}`;
+      const inMemory = this.executedFunctions.has(key);
+      
+      // Storage check with provided function name
+      const inStorage = getPreviousExecution(functionName, callId, contentSignature) !== null;
+      
+      console.debug(
+        `[Debug][${checkId}] Standard Check: Key='${key}', inMemory=${inMemory}, inStorage=${inStorage}`,
+      );
+      
+      if (inMemory || inStorage) {
+        return true;
+      }
+    }
+    
+    // Second check: Try to extract function name from memory if not provided
+    if (typeof functionName !== 'string') {
       for (const key of this.executedFunctions) {
         const parts = key.split(':');
         if (parts.length === 3 && parts[1] === callId && parts[2] === contentSignature) {
-          functionNameFromMemory = parts[0];
-          break;
+          const extractedName = parts[0];
+          console.debug(`[Debug][${checkId}] Found functionName='${extractedName}' from executedFunctions set`);
+          
+          // Check storage using the extracted name
+          const inStorage = getPreviousExecution(extractedName, callId, contentSignature) !== null;
+          if (inStorage) {
+            console.debug(`[Debug][${checkId}] Found execution in storage using extracted name`);
+            return true;
+          }
+          
+          // If in memory (which we already know is true), return true
+          return true;
         }
       }
-      if (functionNameFromMemory) {
-        effectiveFunctionName = functionNameFromMemory; // Set effectiveFunctionName if found in memory
-        foundNameInMemory = true;
-        console.debug(`[Debug] Found functionName='${effectiveFunctionName}' from executedFunctions set`);
-      }
     }
-
-    // Use Standard Check if we have a function name (either passed or found in memory)
-    if (typeof effectiveFunctionName === 'string') {
-      // Check if we have *any* string name
-      const key = `${effectiveFunctionName}:${callId}:${contentSignature}`;
-      const inMemory = this.executedFunctions.has(key);
-      // Use the specific function name for storage lookup
-      const inStorage = getPreviousExecution(effectiveFunctionName, callId, contentSignature) !== null;
-      console.debug(
-        `[Debug] isFunctionExecuted (Standard Check): Key='${key}', inMemory=${inMemory}, inStorage=${inStorage}`,
-      );
-      return inMemory || inStorage;
-    }
-    // Fallback to Legacy Check ONLY if no function name was passed AND none was found in memory
-    else {
-      const key = `${callId}:${contentSignature}`;
-      const inMemory = this.executedFunctions.has(key) || this.executedFunctions.has(`:${callId}:${contentSignature}`); // Check legacy key format too
-      const inStorage = getPreviousExecutionLegacy(callId, contentSignature) !== null;
-      console.debug(
-        `[Debug] isFunctionExecuted (Legacy Check): Key='${key}', inMemory=${inMemory}, inStorage=${inStorage}`,
-      );
-      return inMemory || inStorage;
-    }
+    
+    // Third check: Legacy check for backward compatibility
+    const legacyKey = `${callId}:${contentSignature}`;
+    const legacyKey2 = `:${callId}:${contentSignature}`;
+    const inMemoryLegacy = this.executedFunctions.has(legacyKey) || this.executedFunctions.has(legacyKey2);
+    const inStorageLegacy = getPreviousExecutionLegacy(callId, contentSignature) !== null;
+    
+    console.debug(
+      `[Debug][${checkId}] Legacy Check: Key='${legacyKey}', inMemory=${inMemoryLegacy}, inStorage=${inStorageLegacy}`,
+    );
+    
+    return inMemoryLegacy || inStorageLegacy;
   },
 
   markFunctionExecuted(callId: string, contentSignature: string, functionName?: string): void {
-    // Use the function name if provided, otherwise just use callId and contentSignature
-    const key = functionName ? `${functionName}:${callId}:${contentSignature}` : `${callId}:${contentSignature}`;
-    this.executedFunctions.add(key);
+    // Create a standardized tracking ID for logging
+    const trackingId = Math.random().toString(36).substring(2, 8);
+    
+    if (typeof functionName === 'string' && functionName.trim().length > 0) {
+      // Standard case with function name
+      const key = `${functionName}:${callId}:${contentSignature}`;
+      this.executedFunctions.add(key);
+      console.debug(`[Debug][${trackingId}] Marked function as executed: ${key}`);
+    } else {
+      // Legacy format for backward compatibility
+      const key = `${callId}:${contentSignature}`;
+      this.executedFunctions.add(key);
+      console.debug(`[Debug][${trackingId}] Marked function as executed (legacy): ${key}`);
+    }
+    
+    // Always update the latest execution timestamp
+    (window as any).__lastExecutionTimestamp = Date.now();
   },
 
   isBlockExecuted(blockId: string): boolean {
@@ -448,149 +655,216 @@ export const renderFunctionCall = (block: HTMLPreElement, isProcessingRef: { cur
       addExecuteButton(blockDiv, rawContent);
     }
 
-    // Setup auto-execution with proper wait time for DOM stabilization
-    // This ensures we wait until the function block is fully rendered and stable
-    const autoExecuteEnabled = (window as any).toggleState?.autoExecute === true;
+    // Check if auto-execute is enabled in user settings
+    // Ensure toggleState exists but don't override user preference
+    (window as any).toggleState = (window as any).toggleState || {};
+    
+    // If toggleState.autoExecute is undefined, use the default
+    // If it's explicitly set (true or false), respect that setting
+    if ((window as any).toggleState.autoExecute === undefined) {
+      (window as any).toggleState.autoExecute = DEFAULT_AUTO_EXECUTE;
+    }
+    
+    const autoExecuteEnabled = (window as any).toggleState.autoExecute === true;
+    
+    if (CONFIG.debug) {
+      console.debug(`Auto-execute ${autoExecuteEnabled ? 'enabled' : 'disabled'} for ${functionName} (${blockId})`);
+    }
 
     // Extract function information for execution tracking
     const invokeMatch = content.match(/<invoke name="([^"]+)"(?:\s+call_id="([^"]+)")?>/i);
     const extractedCallId = invokeMatch && invokeMatch[2] ? invokeMatch[2] : blockId;
 
-    // Check if the function has already been executed using the complete signature
-    if (contentSignature && !executionTracker.isFunctionExecuted(extractedCallId, contentSignature, functionName)) {
-      // Proceed with auto-execution setup
-      // STRICT CHECK #1: Is auto-execute enabled in UI settings?
-      if (autoExecuteEnabled !== true) {
-        console.debug(`Auto-execution disabled by user settings for block ${blockId} (${functionName})`);
-        return true;
-      }
+    // Create a unique execution ID for this specific auto-execution attempt
+    const executionId = `exec-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    console.debug(`[AutoExec][${executionId}] Starting auto-execution evaluation for ${functionName} (${blockId})`);
 
-      // STRICT CHECK #2: Has this block already been processed for auto-execution?
-      if (executionTracker.isBlockExecuted(blockId) === true) {
-        console.debug(`Auto-execution skipped: Block ${blockId} (${functionName}) has already been processed`);
-        return true;
-      }
+    // Check if the function has already been executed (less strict check to avoid false positives)
+    const alreadyExecuted = contentSignature 
+      ? getPreviousExecution(functionName, extractedCallId, contentSignature) !== null
+      : false;
 
-      // At this point, we've passed all checks and can proceed with auto-execution
-      // Immediately mark function as scheduled for execution to prevent race conditions
+    if (alreadyExecuted) {
+      console.debug(`[AutoExec][${executionId}] Function already executed (storage check), skipping`);
+      return true;
+    }
+    
+    // STRICT CHECK: Is auto-execute explicitly disabled?
+    if (autoExecuteEnabled !== true) {
+      console.debug(`[AutoExec][${executionId}] Auto-execution disabled by user settings for block ${blockId}`);
+      return true;
+    }
+    
+    // Skip auto-execution blocks that are already being processed
+    // But use a less strict check to avoid false positives
+    if (executionTracker.isBlockExecuted(blockId) && executionTracker.getAttempts(blockId) > 0) {
+      console.debug(`[AutoExec][${executionId}] Block ${blockId} is already being processed, skipping`);
+      return true;
+    }
+
+    // Create a timestamp to track when this execution was initiated
+    const initiationTime = Date.now();
+    
+    // At this point, we've passed all checks and can proceed with auto-execution
+    // Immediately mark function as scheduled for execution to prevent race conditions
+    executionTracker.markFunctionExecuted(extractedCallId, contentSignature, functionName);
+    executionTracker.markBlockExecuted(blockId);
+
+    console.debug(`[AutoExec][${executionId}] Setting up auto-execution for ${functionName} (${blockId})`);
+
+    // Store function details for use in the retry mechanism
+    const functionDetails = {
+      functionName,
+      callId: extractedCallId,
+      contentSignature,
+      params: completeParameters || {}, // Ensure params is an object
+      executionId, // Add the execution ID for tracking
+      initiationTime, // Add initiation timestamp
+    };
+
+    /**
+     * Completely rewritten auto-execution setup with more aggressive behavior
+     * 1. Uses much faster initial timing to execute as soon as possible
+     * 2. Implements a multi-phase approach to ensure DOM stability
+     * 3. Uses simpler checks to avoid false-negative detection
+     * 4. Falls back to direct dispatch of click events if needed
+     */
+    
+    // Immediately mark this for execution
+    executionTracker.markBlockExecuted(blockId);
+    if (contentSignature) {
       executionTracker.markFunctionExecuted(extractedCallId, contentSignature, functionName);
-      executionTracker.markBlockExecuted(blockId);
-
-      console.debug(`Setting up auto-execution for block ${blockId} (${functionName})`);
-
-      // Store function details for use in the retry mechanism (use completeParameters)
-      const functionDetails = {
-        functionName,
-        callId: extractedCallId,
-        contentSignature,
-        params: completeParameters || {}, // Ensure params is an object
-      };
-      // Use a more robust retry mechanism with proper cleanup
-      const setupAutoExecution = () => {
-        const attempts = executionTracker.incrementAttempts(blockId);
-
-        if (attempts > MAX_AUTO_EXECUTE_ATTEMPTS) {
-          console.debug(`Auto-execute: Giving up on block ${blockId} after ${attempts - 1} attempts`);
-          executionTracker.cleanupBlock(blockId);
+    }
+    
+    // First phase: Direct execution (fastest path)
+    const executeDirectly = () => {
+      console.log(`[QuickExec] Attempting direct execution for ${functionName}`);
+      
+      // Directly try to find and click the button immediately
+      const button = buttonContainer.querySelector<HTMLButtonElement>('.execute-button');
+      if (button && !button.disabled) {
+        console.log(`[QuickExec] Found button immediately, clicking...`);
+        try {
+          button.click();
+          return true; // Successfully executed
+        } catch (e) {
+          console.log(`[QuickExec] Direct click failed:`, e);
+          // Fall through to retry mechanism
+        }
+      } else {
+        console.log(`[QuickExec] Button not ready for immediate execution`);
+      }
+      return false;
+    };
+    
+    // Second phase: More aggressive retry mechanism
+    const setupAutoExecution = () => {
+      // Create a unique ID for tracking this execution attempt
+      const execId = Math.random().toString(36).substring(2, 5);
+      
+      // Local retry counter for this specific execution attempt
+      let retryCount = 0;
+      const maxRetries = MAX_AUTO_EXECUTE_ATTEMPTS;
+      
+      // Create the retry function
+      const retry = () => {
+        retryCount++;
+        
+        // Log the attempt
+        console.log(`[AutoExec-${execId}] Attempt ${retryCount}/${maxRetries}`);
+        
+        // Give up if we've tried too many times
+        if (retryCount > maxRetries) {
+          console.log(`[AutoExec-${execId}] Giving up after ${maxRetries} attempts`);
           return;
         }
-
-        console.debug(`Auto-execute attempt ${attempts}/${MAX_AUTO_EXECUTE_ATTEMPTS} for block ${blockId}`);
-
-        setTimeout(() => {
-          let currentBlock = document.querySelector<HTMLDivElement>(`.function-block[data-block-id="${blockId}"]`);
-
-          if (!currentBlock) {
-            console.debug(`Auto-execute: Original block ${blockId} not found. Searching for replacement...`);
-            const potentialBlocks = document.querySelectorAll<HTMLDivElement>('.function-block');
-            for (const block of potentialBlocks) {
-              const preElement = block.querySelector('pre');
-              if (!preElement || !preElement.textContent) continue; // Skip if no pre element or content
-
-              // Manually parse name and callId from content here
-              const content = preElement.textContent;
-              const invokeRegex = /<invoke name="([^"]+)"(?:\s+call_id="([^"]+)")?>/i;
-              const match = content.match(invokeRegex);
-
-              // Check if the parsed details match the function we are trying to execute
-              if (match && match[1] === functionDetails.functionName && match[2] === functionDetails.callId) {
-                const replacementBlockId = block.getAttribute('data-block-id');
-                // Use the imported getPreviousExecution which checks storage
-                const alreadyExecuted = getPreviousExecution(
-                  functionDetails.functionName,
-                  functionDetails.callId,
-                  functionDetails.contentSignature,
-                );
-                // Removed isBeingProcessed check
-
-                if (!alreadyExecuted) {
-                  console.debug(
-                    `Auto-execute: Found potential replacement block ${replacementBlockId || 'unknown ID'}. Attempting execution.`,
-                  );
-                  currentBlock = block; // Target the replacement block
-                  break;
-                } else {
-                  console.debug(
-                    `Auto-execute: Replacement block ${replacementBlockId || 'unknown ID'} skipped (already executed).`,
-                  ); // Updated log message
-                }
+        
+        // Always check for successful execution first to avoid duplicate executions
+        if (getPreviousExecution(functionName, extractedCallId, contentSignature || '')) {
+          console.log(`[AutoExec-${execId}] Function already executed in storage, stopping`);
+          return;
+        }
+        
+        // Primary strategy: Find the button in the current container
+        let executeButton = buttonContainer.querySelector<HTMLButtonElement>('.execute-button');
+        
+        // Fallback: Look more broadly if not found directly
+        if (!executeButton) {
+          const allButtons = document.querySelectorAll<HTMLButtonElement>('.execute-button');
+          for (const btn of Array.from(allButtons)) {
+            // Try to find a button associated with this function
+            const parentBlock = btn.closest('.function-block');
+            if (parentBlock) {
+              const nameEl = parentBlock.querySelector('.function-name-text');
+              if (nameEl && nameEl.textContent === functionName) {
+                console.log(`[AutoExec-${execId}] Found button via function name match`);
+                executeButton = btn;
+                break;
+              }
+              
+              // Try to match by block ID
+              if (parentBlock.getAttribute('data-block-id') === blockId) {
+                console.log(`[AutoExec-${execId}] Found button via block ID match`);
+                executeButton = btn;
+                break;
               }
             }
           }
-
-          if (!currentBlock) {
-            console.debug(
-              `Auto-execute: Block ${blockId} (and suitable replacement) not found in DOM (attempt ${attempts}/${MAX_AUTO_EXECUTE_ATTEMPTS})`,
-            );
-            if (attempts < MAX_AUTO_EXECUTE_ATTEMPTS) {
-              setTimeout(setupAutoExecution, 500); // Retry
-            } else {
-              console.debug(`Auto-execute: Giving up on block ${blockId} - not found in DOM`);
-              executionTracker.cleanupBlock(blockId);
-            }
-            return;
+        }
+        
+        // If we found a button, try to click it
+        if (executeButton && !executeButton.disabled) {
+          console.log(`[AutoExec-${execId}] Found executable button, clicking...`);
+          
+          try {
+            // Use a more forceful click approach
+            const clickEvent = new MouseEvent('click', {
+              bubbles: true,
+              cancelable: true,
+              view: window
+            });
+            
+            executeButton.dispatchEvent(clickEvent);
+            console.log(`[AutoExec-${execId}] Button click dispatched successfully`);
+            return; // Successfully triggered execution
+          } catch (error) {
+            console.error(`[AutoExec-${execId}] Error clicking button:`, error);
+            // Continue to retry
           }
-
-          // --- START: Added final check against persistent storage ---
-          // Use the imported getPreviousExecution which checks storage
-          const finalCheckExecuted = getPreviousExecution(
-            functionDetails.functionName,
-            functionDetails.callId,
-            functionDetails.contentSignature,
-          );
-          if (finalCheckExecuted) {
-            console.debug(
-              `Auto-execute: Function ${functionDetails.functionName} (callId: ${functionDetails.callId}) was found in execution history right before click. Skipping.`,
-            );
-            executionTracker.cleanupBlock(blockId); // Clean up tracker
-            return;
-          }
-          // --- END: Added final check against persistent storage ---
-
-          const executeButton = currentBlock.querySelector<HTMLButtonElement>('.execute-button');
-          if (executeButton) {
-            console.debug(
-              `Auto-execute: Executing function in block ${currentBlock.getAttribute('data-block-id') || blockId} (${functionDetails.functionName}) after DOM stabilization`,
-            );
-            executeButton.click();
-            // NOTE: Execution marking should happen *after* click success, likely handled by the execute button's click handler via functionHistory/storage.
-            executionTracker.cleanupBlock(blockId); // Clean up tracker for *this* attempt
-          } else {
-            console.debug(
-              `Auto-execute: Execute button not found in block ${currentBlock.getAttribute('data-block-id') || blockId} (attempt ${attempts}/${MAX_AUTO_EXECUTE_ATTEMPTS})`,
-            );
-            if (attempts < MAX_AUTO_EXECUTE_ATTEMPTS) {
-              setTimeout(setupAutoExecution, 500); // Retry
-            } else {
-              console.debug(`Auto-execute: Giving up on block ${blockId} - button not found`);
-              executionTracker.cleanupBlock(blockId);
-            }
-          }
-        }, 500); // Reduced initial wait to 500ms
+        } else if (executeButton) {
+          console.log(`[AutoExec-${execId}] Found button but it's disabled, waiting...`);
+        } else {
+          console.log(`[AutoExec-${execId}] Button not found in this attempt`);
+        }
+        
+        // Calculate next retry delay with exponential backoff (capped)
+        const baseDelay = 150; // Start with faster retries
+        const maxDelay = 1000; // Cap maximum delay
+        const delay = Math.min(baseDelay * Math.pow(1.5, retryCount - 1), maxDelay);
+        
+        // Schedule the next retry
+        console.log(`[AutoExec-${execId}] Scheduling retry in ${delay}ms`);
+        setTimeout(retry, delay);
       };
-
-      setupAutoExecution();
+      
+      // Start the retry process immediately
+      retry();
+    };
+    
+    // Try direct execution first
+    if (!executeDirectly()) {
+      // If direct execution fails, start the retry mechanism after a short delay
+      setTimeout(setupAutoExecution, 50);
     }
+  }
+
+  // Disable the DOM Observer temporarily to prevent any interference with rendering
+  if (domObserver) {
+    domObserver.disconnect();
+    setTimeout(() => {
+      // Re-enable the observer after a short delay to allow rendering to complete
+      setupDOMObserver();
+    }, 1000);
   }
 
   return true;

@@ -491,8 +491,14 @@ export const addExecuteButton = (blockDiv: HTMLDivElement, rawContent: string): 
   loadingIndicator.style.backgroundColor = 'rgba(0, 0, 0, 0.03)';
   loadingIndicator.style.border = '1px solid rgba(0, 0, 0, 0.06)';
 
+  // Add a custom attribute to track auto-execution status
+  executeButton.setAttribute('data-auto-exec-ready', 'true');
+  
   // Handle click event
   executeButton.onclick = () => {
+    // Mark as executed to prevent duplicates
+    executeButton.setAttribute('data-auto-exec-ready', 'false');
+    
     // Add spinner to the button and disable it
     executeButton.disabled = true;
     const spinner = document.createElement('span');
