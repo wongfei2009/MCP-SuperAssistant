@@ -111,6 +111,12 @@ const Sidebar: React.FC = () => {
         setAutoSubmit(preferences.autoSubmit || false);
         setTheme(preferences.theme || 'system');
         previousWidthRef.current = preferences.sidebarWidth || SIDEBAR_DEFAULT_WIDTH;
+        
+        // Load floating button position if available
+        if (preferences.floatingButtonPosition) {
+          setFloatingBtnPosition(preferences.floatingButtonPosition);
+          logMessage(`[Sidebar] Loaded floating button position: ${JSON.stringify(preferences.floatingButtonPosition)}`);
+        }
       } catch (error) {
         logMessage(`[Sidebar] Error loading preferences: ${error instanceof Error ? error.message : String(error)}`);
       } finally {
@@ -243,6 +249,67 @@ const Sidebar: React.FC = () => {
     isResizingRef.current = false;
   }, [sidebarWidth, isMinimized, adapter]); // isPushMode removed from dependencies
 
+  // For floating button position
+  const [floatingBtnPosition, setFloatingBtnPosition] = useState({ top: 20, right: 20 });
+  const dragRef = useRef({ isDragging: false, initialX: 0, initialY: 0, initialTop: 0, initialRight: 0 });
+
+  // Handle dragging of floating button
+  const handleDragStart = (e: React.MouseEvent) => {
+    // Only process left mouse button (primary click)
+    if (e.button !== 0) return;
+    
+    // Prevent default behavior like text selection
+    e.preventDefault();
+    
+    // Store initial position
+    dragRef.current = {
+      isDragging: true,
+      initialX: e.clientX,
+      initialY: e.clientY,
+      initialTop: floatingBtnPosition.top,
+      initialRight: floatingBtnPosition.right,
+    };
+    
+    // Add window event listeners
+    window.addEventListener('mousemove', handleDragMove);
+    window.addEventListener('mouseup', handleDragEnd);
+  };
+  
+  const handleDragMove = (e: MouseEvent) => {
+    if (!dragRef.current.isDragging) return;
+    
+    // Calculate new position (right value decreases as X increases)
+    const deltaX = dragRef.current.initialX - e.clientX;
+    const deltaY = e.clientY - dragRef.current.initialY;
+    
+    // Update position
+    setFloatingBtnPosition({
+      top: Math.max(10, dragRef.current.initialTop + deltaY),
+      right: Math.max(10, dragRef.current.initialRight + deltaX),
+    });
+  };
+  
+  const handleDragEnd = () => {
+    dragRef.current.isDragging = false;
+    
+    // Remove window event listeners
+    window.removeEventListener('mousemove', handleDragMove);
+    window.removeEventListener('mouseup', handleDragEnd);
+    
+    // Save position to preferences
+    if (!isInitialLoadRef.current) {
+      saveSidebarPreferences({
+        sidebarWidth,
+        isMinimized,
+        autoSubmit,
+        theme,
+        floatingButtonPosition: floatingBtnPosition,
+      }).catch(error => {
+        logMessage(`[Sidebar] Error saving floating button position: ${error instanceof Error ? error.message : String(error)}`);
+      });
+    }
+  };
+
   // Simple transition management
   const startTransition = () => {
     // Clear any existing timer
@@ -259,9 +326,15 @@ const Sidebar: React.FC = () => {
     }, 500) as unknown as number;
   };
 
-  const toggleMinimize = () => {
+  const toggleMinimize = (e: React.MouseEvent) => {
+    // Don't toggle if we're dragging
+    if (dragRef.current.isDragging) {
+      return;
+    }
+    
     startTransition();
     setIsMinimized(!isMinimized);
+    e.stopPropagation(); // Prevent event bubbling
   };
 
   const handleResize = useCallback(
@@ -392,113 +465,124 @@ const Sidebar: React.FC = () => {
     }
   };
 
-  return (
+  return isMinimized ? (
+    // Floating button UI when collapsed (draggable)
+    <div 
+      className={cn(
+        'z-[9999] sidebar-floating-button',
+        isTransitioning ? 'sidebar-transitioning' : '',
+        'pulse' // Add pulse animation class
+      )}
+      onMouseDown={handleDragStart}
+      style={{ 
+        cursor: 'move',
+        top: `${floatingBtnPosition.top}px`,
+        right: `${floatingBtnPosition.right}px`
+      }}
+    >
+      <Button
+        variant="default"
+        size="icon"
+        onClick={toggleMinimize}
+        aria-label="Expand sidebar"
+        className="w-10 h-10 rounded-full shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-110 bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600"
+      >
+        <img
+          src={chrome.runtime.getURL('icon-34.png')}
+          alt="MCP Logo"
+          className="w-6 h-6 rounded-sm"
+        />
+      </Button>
+    </div>
+  ) : (
+    // Normal sidebar when expanded
     <div
       ref={sidebarRef}
       className={cn(
         'fixed top-0 right-0 h-screen bg-white dark:bg-slate-900 shadow-lg z-50 flex flex-col border-l border-slate-200 dark:border-slate-700 sidebar push-mode',
         isResizingRef.current ? 'resizing' : '',
-        isMinimized ? 'collapsed' : '',
         isTransitioning ? 'sidebar-transitioning' : '',
         isInitialRender ? 'initial-render' : '',
       )}
-      style={{ width: isMinimized ? `${SIDEBAR_MINIMIZED_WIDTH}px` : `${sidebarWidth}px` }}>
-      {/* Resize Handle - only visible when not minimized */}
-      {!isMinimized && (
-        <ResizeHandle
-          onResize={handleResize}
-          minWidth={SIDEBAR_DEFAULT_WIDTH}
-          maxWidth={500}
-          className="absolute left-0 top-0 bottom-0 w-1 cursor-ew-resize hover:bg-indigo-400 dark:hover:bg-indigo-600 z-[60] transition-colors duration-300"
-        />
-      )}
+      style={{ width: `${sidebarWidth}px` }}>
+      {/* Resize Handle */}
+      <ResizeHandle
+        onResize={handleResize}
+        minWidth={SIDEBAR_DEFAULT_WIDTH}
+        maxWidth={500}
+        className="absolute left-0 top-0 bottom-0 w-1 cursor-ew-resize hover:bg-indigo-400 dark:hover:bg-indigo-600 z-[60] transition-colors duration-300"
+      />
 
-      {/* Header - Adjust content based on isMinimized */}
+      {/* Header */}
       <div className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 p-4 flex items-center justify-between flex-shrink-0 shadow-sm sidebar-header">
-        {!isMinimized ? (
-          <>
-            <div className="flex items-center space-x-2">
-              {/* Replace settings icon with logo, make it larger and linkable */}
+        <div className="flex items-center space-x-2">
+          {/* Logo, linkable */}
+          <a
+            href="https://mcpsuperassistant.ai/"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Visit MCP Super Assistant Website"
+            className="block">
+            <img
+              src={chrome.runtime.getURL('icon-34.png')}
+              alt="MCP Logo"
+              className="w-8 h-8 rounded-md"
+            />
+          </a>
+          {isComponentLoadingComplete ? (
+            <>
+              {/* Wrap title in link */}
               <a
                 href="https://mcpsuperassistant.ai/"
                 target="_blank"
                 rel="noopener noreferrer"
-                aria-label="Visit MCP Super Assistant Website"
-                className="block">
-                {' '}
-                {/* Make link block for sizing */}
-                <img
-                  src={chrome.runtime.getURL('icon-34.png')}
-                  alt="MCP Logo"
-                  className="w-8 h-8 rounded-md " // Increase size & add rounded corners
-                />
-              </a>
-              {isComponentLoadingComplete ? (
-                <>
-                  {/* Wrap title in link */}
-                  <a
-                    href="https://mcpsuperassistant.ai/"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-slate-800 dark:text-slate-100 hover:text-slate-600 dark:hover:text-slate-300 transition-colors duration-150 no-underline"
-                    aria-label="Visit MCP Super Assistant Website">
-                    <Typography variant="h4" className="font-semibold">
-                      MCP SuperAssistant
-                    </Typography>
-                  </a>
-                  {/* Existing icon link */}
-                  <a
-                    href="https://mcpsuperassistant.ai/"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="ml-1 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300 transition-colors duration-150"
-                    aria-label="Visit MCP Super Assistant Website">
-                    <Icon name="arrow-up-right" size="xs" className="inline-block align-baseline" />
-                  </a>
-                </>
-              ) : (
-                <Typography variant="h4" className="font-semibold text-slate-800 dark:text-slate-100">
+                className="text-slate-800 dark:text-slate-100 hover:text-slate-600 dark:hover:text-slate-300 transition-colors duration-150 no-underline"
+                aria-label="Visit MCP Super Assistant Website">
+                <Typography variant="h4" className="font-semibold">
                   MCP SuperAssistant
                 </Typography>
-              )}
-            </div>
-            <div className="flex items-center space-x-2 pr-1">
-              {/* Theme Toggle Button */}
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={handleThemeToggle}
-                aria-label={`Toggle theme (current: ${theme})`}
-                className="hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full transition-all duration-200 hover:scale-105">
-                <Icon
-                  name={getCurrentThemeIcon()}
-                  size="sm"
-                  className="transition-all text-indigo-600 dark:text-indigo-400"
-                />
-                <span className="sr-only">Toggle theme</span>
-              </Button>
-              {/* Minimize Button */}
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={toggleMinimize}
-                aria-label="Minimize sidebar"
-                className="hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full transition-all duration-200 hover:scale-105">
-                <Icon name="chevron-right" className="h-4 w-4 text-slate-700 dark:text-slate-300" />
-              </Button>
-            </div>
-          </>
-        ) : (
-          // Expand Button when minimized
+              </a>
+              {/* Existing icon link */}
+              <a
+                href="https://mcpsuperassistant.ai/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="ml-1 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300 transition-colors duration-150"
+                aria-label="Visit MCP Super Assistant Website">
+                <Icon name="arrow-up-right" size="xs" className="inline-block align-baseline" />
+              </a>
+            </>
+          ) : (
+            <Typography variant="h4" className="font-semibold text-slate-800 dark:text-slate-100">
+              MCP SuperAssistant
+            </Typography>
+          )}
+        </div>
+        <div className="flex items-center space-x-2 pr-1">
+          {/* Theme Toggle Button */}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={handleThemeToggle}
+            aria-label={`Toggle theme (current: ${theme})`}
+            className="hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full transition-all duration-200 hover:scale-105">
+            <Icon
+              name={getCurrentThemeIcon()}
+              size="sm"
+              className="transition-all text-indigo-600 dark:text-indigo-400"
+            />
+            <span className="sr-only">Toggle theme</span>
+          </Button>
+          {/* Minimize Button */}
           <Button
             variant="ghost"
             size="icon"
             onClick={toggleMinimize}
-            aria-label="Expand sidebar"
-            className="mx-auto hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full transition-all duration-200 hover:scale-110">
-            <Icon name="chevron-left" className="h-4 w-4 text-slate-700 dark:text-slate-300" />
+            aria-label="Minimize sidebar"
+            className="hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full transition-all duration-200 hover:scale-105">
+            <Icon name="chevron-right" className="h-4 w-4 text-slate-700 dark:text-slate-300" />
           </Button>
-        )}
+        </div>
       </div>
 
       {/* Main Content Area - Using sliding panel approach */}

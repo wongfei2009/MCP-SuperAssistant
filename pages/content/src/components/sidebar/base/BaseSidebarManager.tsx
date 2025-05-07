@@ -88,28 +88,30 @@ export abstract class BaseSidebarManager {
    * @param isCollapsed Whether the sidebar is collapsed
    */
   public setPushContentMode(_enabled: boolean, sidebarWidth?: number, isCollapsed?: boolean): void {
-    // Set sidebar width CSS variable
-    const width = isCollapsed ? 56 : sidebarWidth || 320;
+    // For floating button in collapsed state, don't push content
+    const width = isCollapsed ? 0 : sidebarWidth || 320;
     document.documentElement.style.setProperty('--sidebar-width-mcp', `${width}px`);
 
-    // Apply specific inline styles directly to the HTML element
-    document.documentElement.style.setProperty('position', 'relative');
-    document.documentElement.style.setProperty('margin-right', `${width}px`);
-    document.documentElement.style.setProperty('width', `calc(100% - ${width}px)`);
-    document.documentElement.style.setProperty('min-height', '100vh');
+    // Only apply push styles if not collapsed
+    if (!isCollapsed) {
+      // Apply specific inline styles directly to the HTML element
+      document.documentElement.style.setProperty('position', 'relative');
+      document.documentElement.style.setProperty('margin-right', `${width}px`);
+      document.documentElement.style.setProperty('width', `calc(100% - ${width}px)`);
+      document.documentElement.style.setProperty('min-height', '100vh');
 
-    // Add classes to HTML root for CSS-based layout adjustments
-    document.documentElement.classList.add('push-mode-enabled');
-
-    // Add collapsed state class if needed
-    if (isCollapsed) {
-      document.documentElement.classList.add('sidebar-collapsed');
-    } else {
+      // Add classes to HTML root for CSS-based layout adjustments
+      document.documentElement.classList.add('push-mode-enabled');
       document.documentElement.classList.remove('sidebar-collapsed');
+    } else {
+      // If collapsed (floating button), remove push styles but keep mode enabled
+      document.documentElement.style.setProperty('margin-right', '0px');
+      document.documentElement.style.setProperty('width', '100%');
+      document.documentElement.classList.add('sidebar-collapsed');
     }
 
-    // When push mode is enabled, ensure the sidebar is visible
-    if (!this._isVisible || (this.shadowHost && this.shadowHost.style.display !== 'block')) {
+    // When push mode is enabled and not collapsed, ensure the sidebar is visible
+    if (!isCollapsed && (!this._isVisible || (this.shadowHost && this.shadowHost.style.display !== 'block'))) {
       logMessage('[BaseSidebarManager] Push mode enabled but sidebar not visible, showing sidebar');
       // Use a non-async version of show to ensure immediate visibility
       this.forceVisibility();
@@ -118,7 +120,7 @@ export abstract class BaseSidebarManager {
     // Ensure push mode styles are in the document
     this.ensurePushModeStyles();
 
-    logMessage(`BaseSidebarManager: Push Content Mode applied with width: ${width}px`);
+    logMessage(`BaseSidebarManager: Push Content Mode applied with width: ${width}px, collapsed: ${isCollapsed}`);
   }
 
   /**
@@ -158,10 +160,15 @@ export abstract class BaseSidebarManager {
    * @param width The new width of the sidebar
    */
   public updatePushModeStyles(width: number): void {
-    if (this._isPushContentMode) {
+    // Get the collapsed state from the document class
+    const isCollapsed = document.documentElement.classList.contains('sidebar-collapsed');
+    
+    // Only update styles if not in collapsed/floating button state
+    if (!isCollapsed) {
       document.documentElement.style.setProperty('--sidebar-width-mcp', `${width}px`);
       document.documentElement.style.setProperty('margin-right', `${width}px`);
       document.documentElement.style.setProperty('width', `calc(100% - ${width}px)`);
+      logMessage(`[BaseSidebarManager] Updated push mode styles with width: ${width}px`);
     }
   }
 
@@ -222,10 +229,17 @@ export abstract class BaseSidebarManager {
   }
 
   /**
-   * Get current push content mode state
+   * Check if sidebar is currently in push content mode
    * Always returns true since Push Content Mode is always enabled
    */
   public getPushContentMode(): boolean {
+    return true;
+  }
+
+  /**
+   * For compatibility with existing code that might check this property
+   */
+  get _isPushContentMode(): boolean {
     return true;
   }
 

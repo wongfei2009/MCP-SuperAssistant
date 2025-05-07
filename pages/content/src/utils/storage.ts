@@ -7,6 +7,10 @@ export interface SidebarPreferences {
   isMinimized: boolean;
   autoSubmit: boolean;
   theme: 'light' | 'dark' | 'system';
+  floatingButtonPosition?: {
+    top: number;
+    right: number;
+  };
 }
 
 // Tool Permissions
@@ -28,6 +32,10 @@ const DEFAULT_PREFERENCES: SidebarPreferences = {
   isMinimized: false,
   autoSubmit: false,
   theme: 'system',
+  floatingButtonPosition: {
+    top: 20,
+    right: 20
+  }
 };
 
 /**
