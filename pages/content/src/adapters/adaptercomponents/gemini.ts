@@ -61,7 +61,14 @@ const geminiAdapterConfig: AdapterConfig = {
   storageKeyPrefix: 'mcp-gemini-state', // Uses localStorage, prefix + URL path
   findButtonInsertionPoint: findGeminiButtonInsertionPoint,
   getStorage: () => localStorage, // Gemini uses localStorage
-  // getCurrentURLKey: default implementation in common.ts (pathname) is likely fine
+  
+  // Override URL key generation to use a fixed key for all Gemini chats
+  // This ensures toggle state is shared across all Gemini chat sessions
+  getCurrentURLKey: () => {
+    // Return a fixed string instead of the path to make settings consistent across all chats
+    return 'global-settings';
+  },
+  
   onMCPEnabled: showGeminiSidebar,
   onMCPDisabled: hideGeminiSidebar,
 };
